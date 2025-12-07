@@ -33,9 +33,9 @@ const MacroCard = ({ title, current, target, unit, color, icon: Icon }) => {
     );
 };
 
-const NutritionSummary = ({ goals, logs }) => {
+const NutritionSummary = ({ goals, meals }) => {
     // Calculate totals from logs
-    const totals = logs.meals.reduce((acc, meal) => {
+    const totals = meals.reduce((acc, meal) => {
         return {
             calories: acc.calories + meal.calories,
             protein: acc.protein + meal.macros.p,

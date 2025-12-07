@@ -1,7 +1,8 @@
 import React from 'react';
 import { CheckCircle2, Circle } from 'lucide-react';
 
-const DietChecklist = ({ items, onToggle }) => {
+const DietChecklist = ({ checklist, onToggle }) => {
+    const items = checklist || [];
     return (
         <div className="bg-card p-6 rounded-2xl shadow-sm border border-border h-full">
             <h3 className="text-lg font-bold mb-4">Checklist Diário</h3>

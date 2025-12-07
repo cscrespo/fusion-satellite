@@ -117,7 +117,9 @@ async function runMigrations() {
             '01_core_tables.sql',
             '02_patient_management.sql',
             '03_nutrition_diet.sql',
-            '04_consultations_plans_financial.sql'
+            '04_consultations_plans_financial.sql',
+            '05_crud_schema.sql',
+            '99_fix_measurements_policy.sql'
         ]
 
         let successCount = 0

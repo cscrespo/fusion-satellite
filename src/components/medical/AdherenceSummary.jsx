@@ -2,10 +2,12 @@ import React from 'react';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 
 const AdherenceSummary = ({ logs }) => {
-    // Calculate stats based on today's logs (passed as props)
-    const total = logs.length;
-    const taken = logs.filter(l => l.status === 'taken').length;
-    const missed = logs.filter(l => l.status === 'missed').length;
+    // Calculate stats based on logs (handle both array and object/map)
+    const logsArray = Array.isArray(logs) ? logs : Object.values(logs || {});
+
+    const total = logsArray.length;
+    const taken = logsArray.filter(l => l.status === 'taken').length;
+    const missed = logsArray.filter(l => l.status === 'missed').length;
 
     const adherenceRate = total > 0 ? Math.round((taken / total) * 100) : 0;
 

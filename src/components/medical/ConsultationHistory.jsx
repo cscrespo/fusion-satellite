@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { Calendar, Clock, User, FileText, ChevronDown, ChevronUp, Activity, Stethoscope, ClipboardList, BrainCircuit, Star } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Calendar, Clock, User, FileText, ChevronDown, ChevronUp, Activity, Stethoscope, ClipboardList, Brain, Star, Edit, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import RateConsultationModal from './RateConsultationModal';
+import ConsultationFormModal from './ConsultationFormModal';
 
-const ConsultationCard = ({ consultation, onRate }) => {
+const ConsultationCard = ({ consultation, onRate, onEdit, onDelete }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [showRatingModal, setShowRatingModal] = useState(false);
 
@@ -68,6 +69,33 @@ const ConsultationCard = ({ consultation, onRate }) => {
                                 Avaliar
                             </button>
                         )}
+
+                        {/* Edit Button */}
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onEdit(consultation);
+                            }}
+                            className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/20 rounded-lg transition-colors"
+                            title="Editar consulta"
+                        >
+                            <Edit className="w-4 h-4" />
+                        </button>
+
+                        {/* Delete Button */}
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm('Tem certeza que deseja excluir esta consulta?')) {
+                                    onDelete(consultation.id);
+                                }
+                            }}
+                            className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors"
+                            title="Excluir consulta"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+
                         <div className="text-primary font-medium">
                             {isExpanded ? 'Ver menos' : 'Ver detalhes'}
                             {isExpanded ? <ChevronUp className="w-4 h-4 inline ml-1" /> : <ChevronDown className="w-4 h-4 inline ml-1" />}
@@ -104,24 +132,24 @@ const ConsultationCard = ({ consultation, onRate }) => {
                                     <div className="grid grid-cols-2 gap-4 mb-3">
                                         <div className="p-2 bg-secondary/30 rounded-lg">
                                             <span className="text-xs text-muted-foreground block">Peso</span>
-                                            <span className="font-bold text-lg">{consultation.objective.weight} kg</span>
+                                            <span className="font-bold text-lg">{consultation.objective?.weight || '-'} kg</span>
                                         </div>
                                         <div className="p-2 bg-secondary/30 rounded-lg">
                                             <span className="text-xs text-muted-foreground block">Pressão Arterial</span>
-                                            <span className="font-bold text-lg">{consultation.objective.bp}</span>
+                                            <span className="font-bold text-lg">{consultation.objective?.bp || '-'}</span>
                                         </div>
                                     </div>
-                                    <p className="text-muted-foreground text-xs">{consultation.objective.notes}</p>
+                                    <p className="text-muted-foreground text-xs">{consultation.objective?.notes || 'Sem observações.'}</p>
                                 </div>
                             </div>
 
                             {/* Assessment */}
                             <div className="space-y-3">
                                 <h4 className="font-bold flex items-center gap-2 text-foreground">
-                                    <BrainCircuit className="w-4 h-4 text-primary" /> Avaliação (Assessment)
+                                    <Brain className="w-4 h-4 text-primary" /> Avaliação (Assessment)
                                 </h4>
                                 <div className="bg-background p-4 rounded-xl border border-border text-sm">
-                                    <p>{consultation.assessment}</p>
+                                    <p>{consultation.assessment || 'Sem avaliação registrada.'}</p>
                                 </div>
                             </div>
 
@@ -132,12 +160,15 @@ const ConsultationCard = ({ consultation, onRate }) => {
                                 </h4>
                                 <div className="bg-background p-4 rounded-xl border border-border text-sm">
                                     <ul className="space-y-2">
-                                        {consultation.plan.map((item, index) => (
+                                        {(consultation.plan || []).map((item, index) => (
                                             <li key={index} className="flex gap-2 items-start">
                                                 <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
                                                 <span>{item}</span>
                                             </li>
                                         ))}
+                                        {(!consultation.plan || consultation.plan.length === 0) && (
+                                            <li className="text-muted-foreground italic">Nenhum plano registrado.</li>
+                                        )}
                                     </ul>
                                 </div>
                             </div>
@@ -156,40 +187,124 @@ const ConsultationCard = ({ consultation, onRate }) => {
     );
 };
 
-const ConsultationHistory = ({ consultations }) => {
+const ConsultationHistory = ({ consultations, patientId, onAddConsultation, onUpdateConsultation, onDeleteConsultation }) => {
     const [consultationList, setConsultationList] = useState(consultations || []);
+    const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+    const [editingConsultation, setEditingConsultation] = useState(null);
 
-    const handleRate = (consultationId, ratingData) => {
-        setConsultationList(prev => prev.map(consultation =>
-            consultation.id === consultationId
-                ? { ...consultation, rating: ratingData.rating, ratingComment: ratingData.comment }
-                : consultation
-        ));
-        alert(`Avaliação enviada com sucesso! ${ratingData.rating} estrelas`);
+    useEffect(() => {
+        setConsultationList(consultations || []);
+    }, [consultations]);
+
+    const handleRate = async (consultationId, ratingData) => {
+        try {
+            if (onUpdateConsultation) {
+                // Call context update
+                await onUpdateConsultation(consultationId, {
+                    rating: ratingData.rating,
+                    ratingComment: ratingData.comment // Check if backend expects snake_case? updateConsultation converts camelCase?
+                    // updateConsultation in PatientContext uses: rating: consultationData.rating, rating_comment: consultationData.ratingComment
+                });
+            } else {
+                // Fallback for local dev/mock
+                setConsultationList(prev => prev.map(consultation =>
+                    consultation.id === consultationId
+                        ? { ...consultation, rating: ratingData.rating, ratingComment: ratingData.comment }
+                        : consultation
+                ));
+            }
+            // Alert removed or kept? Kept for UX
+            alert(`Avaliação enviada com sucesso!`);
+        } catch (err) {
+            console.error('Error rating:', err);
+            alert('Erro ao salvar avaliação.');
+        }
     };
 
-    if (!consultationList || consultationList.length === 0) {
-        return (
-            <div className="text-center py-12 text-muted-foreground">
-                <FileText className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                <p>Nenhuma consulta registrada.</p>
-            </div>
-        );
-    }
+    const handleAddConsultation = () => {
+        setEditingConsultation(null);
+        setIsFormModalOpen(true);
+    };
+
+    const handleEditConsultation = (consultation) => {
+        setEditingConsultation(consultation);
+        setIsFormModalOpen(true);
+    };
+
+    const handleSaveConsultation = async (consultationData) => {
+        try {
+            if (editingConsultation) {
+                // Update existing consultation
+                if (onUpdateConsultation) {
+                    await onUpdateConsultation(editingConsultation.id, consultationData);
+                }
+            } else {
+                // Add new consultation
+                if (onAddConsultation) {
+                    await onAddConsultation(consultationData);
+                }
+            }
+            setIsFormModalOpen(false);
+            setEditingConsultation(null);
+        } catch (error) {
+            console.error('Error saving consultation:', error);
+            alert('Erro ao salvar consulta. Por favor, tente novamente.');
+        }
+    };
 
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold">Histórico de Consultas</h2>
-                <button className="px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:opacity-90 transition-opacity">
+                <button
+                    onClick={handleAddConsultation}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
+                >
                     + Nova Consulta
                 </button>
             </div>
-            <div className="space-y-4">
-                {consultationList.map((consultation) => (
-                    <ConsultationCard key={consultation.id} consultation={consultation} onRate={handleRate} />
-                ))}
-            </div>
+
+            {(!consultationList || consultationList.length === 0) ? (
+                <div className="text-center py-12 text-muted-foreground border border-dashed border-border rounded-xl">
+                    <FileText className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                    <p>Nenhuma consulta registrada.</p>
+                    <p className="text-sm mt-2">Clique no botão acima para adicionar.</p>
+                </div>
+            ) : (
+                <div className="space-y-4">
+                    <div className="space-y-4">
+                        {consultationList.filter(Boolean).map((consultation) => (
+                            <ConsultationCard
+                                key={consultation.id}
+                                consultation={{
+                                    ...consultation,
+                                    objective: consultation.objective || {},
+                                    plan: Array.isArray(consultation.plan) ? consultation.plan : []
+                                }}
+                                onRate={handleRate}
+                                onEdit={handleEditConsultation}
+                                onDelete={async (consultationId) => {
+                                    setConsultationList(prev => prev.filter(c => c.id !== consultationId));
+                                    if (onDeleteConsultation) {
+                                        await onDeleteConsultation(consultationId);
+                                    }
+                                }}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            <ConsultationFormModal
+                isOpen={isFormModalOpen}
+                onClose={() => {
+                    setIsFormModalOpen(false);
+                    setEditingConsultation(null);
+                }}
+                onSave={handleSaveConsultation}
+                editingConsultation={editingConsultation}
+                patientId={patientId}
+            />
         </div>
     );
 };

@@ -12,7 +12,7 @@ const HistoryEntryModal = ({ isOpen, onClose, onSubmit, initialData }) => {
     useEffect(() => {
         if (initialData) {
             setFormData({
-                date: initialData.date,
+                date: initialData.date ? initialData.date.split('T')[0] : new Date().toISOString().split('T')[0],
                 weight: initialData.weight || '',
                 fatMass: initialData.fatMass || '',
                 leanMass: initialData.leanMass || ''

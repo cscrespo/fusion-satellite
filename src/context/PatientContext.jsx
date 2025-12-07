@@ -462,6 +462,269 @@ export const PatientProvider = ({ children }) => {
         console.log('Diet plan update:', patientId, dietPlan);
     };
 
+
+    // ========================================
+    // EXTENDED CRUD - Phase 3: Full Features
+    // ========================================
+
+    // 1. Fetch Full Patient Items (Meds, Supplements, Tasks)
+    const fetchPatientItems = async (patientId) => {
+        if (!profile?.organization_id) return { medications: [], supplements: [], tasks: [] };
+
+        try {
+            const [meds, supps, tasks] = await Promise.all([
+                supabase.from('patient_medications').select('*').eq('patient_id', patientId).eq('organization_id', profile.organization_id),
+                supabase.from('patient_supplements').select('*').eq('patient_id', patientId).eq('organization_id', profile.organization_id),
+                supabase.from('patient_tasks').select('*').eq('patient_id', patientId).eq('organization_id', profile.organization_id)
+            ]);
+
+            return {
+                medications: meds.data || [],
+                supplements: supps.data || [],
+                tasks: tasks.data || []
+            };
+        } catch (err) {
+            console.error('Error fetching patient items:', err);
+            return { medications: [], supplements: [], tasks: [] };
+        }
+    };
+
+    // 2. CONSULTATIONS CRUD
+    const fetchPatientConsultations = async (patientId) => {
+        if (!profile?.organization_id) return [];
+        try {
+            const { data, error } = await supabase
+                .from('patient_consultations')
+                .select('*')
+                .eq('patient_id', patientId)
+                .eq('organization_id', profile.organization_id)
+                .order('date', { ascending: false });
+
+            if (error) throw error;
+            return data || [];
+        } catch (err) {
+            // console.error('Error fetching consultations:', err);
+            return [];
+        }
+    };
+
+    const addConsultation = async (patientId, consultationData) => {
+        if (!profile?.organization_id) throw new Error('No Organization');
+        try {
+            const { data, error } = await supabase
+                .from('patient_consultations')
+                .insert({
+                    organization_id: profile.organization_id,
+                    patient_id: patientId,
+                    doctor_id: profile.id, // Or passed in data if different
+                    doctor_name: consultationData.doctor,
+                    specialty: consultationData.specialty,
+                    date: consultationData.date,
+                    type: consultationData.type,
+                    transcription: consultationData.transcription,
+                    notes: consultationData.notes,
+                    objective: consultationData.objective,
+                    assessment: consultationData.assessment,
+                    plan: consultationData.plan
+                })
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        } catch (err) {
+            console.error('Error adding consultation:', err);
+            throw err;
+        }
+    };
+
+    const updateConsultation = async (id, consultationData) => {
+        try {
+            const { data, error } = await supabase
+                .from('patient_consultations')
+                .update({
+                    doctor_name: consultationData.doctor,
+                    specialty: consultationData.specialty,
+                    date: consultationData.date,
+                    type: consultationData.type,
+                    transcription: consultationData.transcription,
+                    notes: consultationData.notes,
+                    objective: consultationData.objective,
+                    assessment: consultationData.assessment,
+                    plan: consultationData.plan,
+                    rating: consultationData.rating,
+                    rating_comment: consultationData.ratingComment
+                })
+                .eq('id', id)
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        } catch (err) {
+            console.error('Error updating consultation:', err);
+            throw err;
+        }
+    };
+
+    const deleteConsultation = async (id) => {
+        try {
+            const { error } = await supabase.from('patient_consultations').delete().eq('id', id);
+            if (error) throw error;
+        } catch (err) {
+            console.error('Error deleting consultation:', err);
+            throw err;
+        }
+    };
+
+    // 3. DIET & LOGS CRUD
+    const fetchPatientDietPlan = async (patientId) => {
+        if (!profile?.organization_id) return {};
+        try {
+            const { data } = await supabase
+                .from('patient_diet_plans')
+                .select('*')
+                .eq('patient_id', patientId);
+
+            // Convert array to object { monday: {...}, tuesday: {...} }
+            const plan = {};
+            if (data) {
+                data.forEach(dayPlan => {
+                    plan[dayPlan.day_of_week] = {
+                        meals: dayPlan.meals,
+                        macros: dayPlan.macros
+                    };
+                });
+            }
+            return plan;
+        } catch (err) {
+            return {};
+        }
+    };
+
+    const updatePatientDietPlan = async (patientId, dayOfWeek, planData) => {
+        if (!profile?.organization_id) throw new Error('No Organization');
+        try {
+            // Upsert
+            const { data, error } = await supabase
+                .from('patient_diet_plans')
+                .upsert({
+                    organization_id: profile.organization_id,
+                    patient_id: patientId,
+                    day_of_week: dayOfWeek.toLowerCase(),
+                    meals: planData.meals,
+                    macros: planData.macros,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'patient_id,day_of_week' })
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        } catch (err) {
+            console.error('Error updating diet plan:', err);
+            throw err;
+        }
+    };
+
+    const fetchPatientDailyLogs = async (patientId, startDate, endDate) => {
+        if (!profile?.organization_id) return { meals: [], checklist: [] }; // Normalized return
+        try {
+            let query = supabase
+                .from('patient_daily_logs')
+                .select('*')
+                .eq('patient_id', patientId);
+
+            if (startDate) query = query.gte('date', startDate);
+            if (endDate) query = query.lte('date', endDate);
+
+            const { data } = await query;
+
+            // Normalize: We might return specific structure or just array of logs
+            // PatientDetails expects { meals: [], checklist: [] } usually for a SINGLE day.
+            // But here we might fetch range.
+            // Let's return raw logs array, and let UI process.
+            return data || [];
+        } catch (err) {
+            return [];
+        }
+    };
+
+    // Log a meal (append to daily log)
+    const logDailyMeal = async (patientId, date, mealData) => {
+        if (!profile?.organization_id) throw new Error('No Organization');
+        try {
+            // Fetch existing log for date
+            const { data: existing } = await supabase
+                .from('patient_daily_logs')
+                .select('*')
+                .eq('patient_id', patientId)
+                .eq('date', date)
+                .single();
+
+            let meals = existing?.meals || [];
+            meals.push({ ...mealData, id: Date.now() }); // Ensure ID
+
+            const { data, error } = await supabase
+                .from('patient_daily_logs')
+                .upsert({
+                    organization_id: profile.organization_id,
+                    patient_id: patientId,
+                    date: date,
+                    meals: meals,
+                    checklist: existing?.checklist || []
+                }, { onConflict: 'patient_id,date' })
+                .select()
+                .single();
+
+            if (error) throw error;
+            return data;
+        } catch (err) {
+            console.error('Error logging meal:', err);
+            throw err;
+        }
+    };
+
+    // 4. ADHERENCE LOGS
+    const fetchAdherenceLogs = async (patientId, startDate, endDate) => {
+        if (!profile?.organization_id) return [];
+        try {
+            let query = supabase
+                .from('patient_adherence_logs')
+                .select('*')
+                .eq('patient_id', patientId);
+
+            if (startDate) query = query.gte('date', startDate);
+            if (endDate) query = query.lte('date', endDate);
+
+            const { data } = await query;
+            return data || [];
+        } catch (err) {
+            return [];
+        }
+    };
+
+    const logAdherence = async (patientId, date, itemId, itemType, status) => {
+        if (!profile?.organization_id) throw new Error('No Org');
+        try {
+            const { data, error } = await supabase
+                .from('patient_adherence_logs')
+                .upsert({
+                    organization_id: profile.organization_id,
+                    patient_id: patientId,
+                    date: date,
+                    item_id: itemId,
+                    item_type: itemType,
+                    status: status,
+                    taken_at: status === 'taken' ? new Date().toISOString() : null
+                }, { onConflict: 'patient_id,item_id,date' })
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        } catch (err) {
+            console.error('Error logging adherence:', err);
+            throw err;
+        }
+    };
+
     return (
         <PatientContext.Provider value={{
             patients,
@@ -479,7 +742,19 @@ export const PatientProvider = ({ children }) => {
             fetchPatientMeasurements,
             addPatientMeasurement,
             updatePatientMeasurement,
-            deletePatientMeasurement
+            deletePatientMeasurement,
+            // New Full CRUD
+            fetchPatientItems,
+            fetchPatientConsultations,
+            addConsultation,
+            updateConsultation,
+            deleteConsultation,
+            fetchPatientDietPlan,
+            updatePatientDietPlan,
+            fetchPatientDailyLogs,
+            logDailyMeal,
+            fetchAdherenceLogs,
+            logAdherence
         }}>
             {children}
         </PatientContext.Provider>

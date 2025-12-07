@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { Pill, Lightbulb, Scale, Ruler, Plus, Activity, ClipboardList, Utensils, CheckCircle2, Stethoscope, Target } from 'lucide-react';
 import { usePatients } from '../context/PatientContext';
@@ -10,6 +10,7 @@ import BodyCompositionChart from '../components/charts/BodyCompositionChart';
 import MeasurementsRadar from '../components/charts/MeasurementsRadar';
 import StatCard from '../components/charts/StatCard';
 import HistoryLogTable from '../components/HistoryLogTable';
+import ErrorBoundary from '../components/ErrorBoundary';
 import HistoryEntryModal from '../components/HistoryEntryModal';
 import NutritionSummary from '../components/nutrition/NutritionSummary';
 import NutritionFilters from '../components/nutrition/NutritionFilters';
@@ -33,7 +34,19 @@ const PatientDetails = () => {
         fetchPatientMeasurements,
         addPatientMeasurement,
         updatePatientMeasurement,
-        deletePatientMeasurement
+        deletePatientMeasurement,
+        // New CRUD
+        fetchPatientItems,
+        fetchPatientConsultations,
+        addConsultation,
+        updateConsultation,
+        deleteConsultation,
+        fetchPatientDietPlan,
+        updatePatientDietPlan,
+        fetchPatientDailyLogs,
+        logDailyMeal,
+        fetchAdherenceLogs,
+        logAdherence
     } = usePatients();
 
     const patient = patients.find(p => p.id === id);
@@ -54,7 +67,73 @@ const PatientDetails = () => {
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [filterType, setFilterType] = useState('all');
     const [showPhotosOnly, setShowPhotosOnly] = useState(false);
+
+    // Nutrition State
+    const [nutritionMode, setNutritionMode] = useState('day');
+    const [nutritionDateRange, setNutritionDateRange] = useState({
+        start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        end: new Date().toISOString().split('T')[0]
+    });
+
+    // Adherence State
     const [adherenceFilterType, setAdherenceFilterType] = useState('all');
+    const [adherenceMode, setAdherenceMode] = useState('day'); // 'day' | 'range'
+    const [adherenceDate, setAdherenceDate] = useState(new Date().toISOString().split('T')[0]);
+    const [adherenceDateRange, setAdherenceDateRange] = useState({
+        start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Last 7 days default
+        end: new Date().toISOString().split('T')[0]
+    });
+
+
+
+
+    // Dynamic Data State
+    const [fetchedMedications, setFetchedMedications] = useState([]);
+    const [fetchedSupplements, setFetchedSupplements] = useState([]);
+    const [fetchedTasks, setFetchedTasks] = useState([]);
+    const [fetchedConsultations, setFetchedConsultations] = useState([]);
+    const [fetchedDietPlan, setFetchedDietPlan] = useState({});
+    const [fetchedDailyLogs, setFetchedDailyLogs] = useState([]); // Array of logs
+    const [fetchedAdherenceLogs, setFetchedAdherenceLogs] = useState([]);
+
+    // Fetch All Dynamic Data
+    useEffect(() => {
+        if (!patient?.id) return;
+
+        const loadAll = async () => {
+            // Items
+            const items = await fetchPatientItems(patient.id);
+            setFetchedMedications(items.medications);
+            setFetchedSupplements(items.supplements);
+            setFetchedTasks(items.tasks);
+
+            // Consultations
+            const consults = await fetchPatientConsultations(patient.id);
+            setFetchedConsultations(consults);
+
+            // Diet Plan
+            const diet = await fetchPatientDietPlan(patient.id);
+            setFetchedDietPlan(diet || {});
+        };
+        loadAll();
+    }, [patient?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Fetch Logs when range/date changes
+    useEffect(() => {
+        if (!patient?.id) return;
+
+        // Nutrition Logs
+        const nutriStart = nutritionMode === 'range' ? nutritionDateRange.start : selectedDate;
+        const nutriEnd = nutritionMode === 'range' ? nutritionDateRange.end : selectedDate;
+        fetchPatientDailyLogs(patient.id, nutriStart, nutriEnd).then(setFetchedDailyLogs);
+
+        // Adherence Logs
+        const adhStart = adherenceMode === 'range' ? adherenceDateRange.start : adherenceDate;
+        const adhEnd = adherenceMode === 'range' ? adherenceDateRange.end : adherenceDate;
+        fetchAdherenceLogs(patient.id, adhStart, adhEnd).then(setFetchedAdherenceLogs);
+
+    }, [patient?.id, selectedDate, nutritionMode, nutritionDateRange, adherenceDate, adherenceMode, adherenceDateRange]);
+
 
     // Fetch measurements when patient changes
     useEffect(() => {
@@ -73,6 +152,78 @@ const PatientDetails = () => {
                 });
         }
     }, [patient?.id, fetchPatientMeasurements]);
+
+    // Format history data for table
+    // Format history data for table
+    const historyData = useMemo(() => {
+        if (!measurements || !Array.isArray(measurements)) return [];
+
+        return measurements.map(m => {
+            // Determine type based on available fields
+            let type = 'weight';
+            if (m.waist || m.hip || m.chest || m.arm_right || m.thigh_right) {
+                type = 'measurement';
+            } else if (m.body_fat_percentage || m.muscle_mass || m.visceral_fat || m.lean_mass || m.fatMass || m.leanMass) {
+                type = 'composition';
+            }
+
+            // Format value summary with ROBUST checks
+            const parts = [];
+
+            // Weight
+            if (m.weight) parts.push(`${m.weight} kg`);
+
+            // Body Composition
+            const fat = m.body_fat_percentage || m.fatMass;
+            if (fat) parts.push(`${fat}% GC`);
+
+            const muscle = m.muscle_mass || m.muscleMass;
+            if (muscle) parts.push(`${muscle} kg M.M.`);
+
+            const lean = m.lean_mass || m.leanMass;
+            if (lean) parts.push(`${lean} kg Massa Magra`);
+
+            const visceral = m.visceral_fat || m.visceralFat;
+            if (visceral) parts.push(`G. Visceral: ${visceral}`);
+
+            // Measurements
+            const measureFields = {
+                waist: 'Cintura',
+                hip: 'Quadril',
+                chest: 'Peito',
+                abdomen: 'Abdômen',
+                arm_right: 'Braço Dir.',
+                arm_left: 'Braço Esq.',
+                thigh_right: 'Coxa Dir.',
+                thigh_left: 'Coxa Esq.',
+                calf_right: 'Panturrilha Dir.',
+                calf_left: 'Panturrilha Esq.',
+                neck: 'Pescoço'
+            };
+
+            Object.entries(measureFields).forEach(([key, label]) => {
+                const val = m[key];
+                if (val) parts.push(`${label}: ${val} cm`);
+            });
+
+            // Height
+            if (m.height) parts.push(`Altura: ${m.height} cm`);
+
+            const dateStr = m.measured_at || m.date;
+
+            return {
+                id: m.id,
+                date: dateStr ? new Date(dateStr).toISOString() : new Date().toISOString(),
+                type: type,
+                value: parts.join(' • ') || 'Sem dados detalhados',
+                // Props for HistoryEntryModal
+                weight: m.weight,
+                fatMass: m.body_fat_percentage || m.fatMass,
+                leanMass: m.lean_mass || m.leanMass,
+                original: m // Keep original for edit actions
+            };
+        });
+    }, [measurements]);
 
     if (!patient) return <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -137,6 +288,8 @@ const PatientDetails = () => {
         }
     };
 
+
+
     // Map patient data
     const patientData = {
         id: patient.id,
@@ -165,14 +318,118 @@ const PatientDetails = () => {
             date: new Date(m.measured_at).toLocaleDateString('pt-BR'),
             weight: safeValue(m.weight)
         })) : [],
-        medications: patient.medications || [],
-        supplements: patient.supplements || [],
-        dailyLogs: patient.dailyLogs || { meals: [], checklist: [] },
-        adherenceLogs: patient.adherenceLogs || {},
-        consultations: patient.consultations || [],
-        dietPlan: patient.dietPlan || {},
+        medications: fetchedMedications || [],
+        supplements: fetchedSupplements || [],
+        dailyLogs: {
+            meals: fetchedDailyLogs.flatMap(log => (log.meals || []).map(m => ({ ...m, date: log.date }))),
+            checklist: fetchedDailyLogs.find(l => l.date === selectedDate)?.checklist || []
+        },
+        adherenceLogs: fetchedAdherenceLogs || [],
+        consultations: fetchedConsultations || [],
+        dietPlan: fetchedDietPlan || {},
         nutritionGoals: patient.nutritionGoals || { calories: 2000, protein: 150, carbs: 200, fat: 60 }
+
     };
+
+    // Filter Adherence Logs (Merge Scheduled + Actual)
+    const filteredAdherenceLogs = useMemo(() => {
+        // 1. Identify Target Dates
+        let dates = [];
+        if (adherenceMode === 'day') {
+            dates = [adherenceDate];
+        } else {
+            // Generate dates between start and end
+            const start = new Date(adherenceDateRange.start);
+            const end = new Date(adherenceDateRange.end);
+            const curr = new Date(start);
+
+            // Safety cap to prevent infinite loop if dates invalid
+            let safety = 0;
+            while (curr <= end && safety < 365) {
+                dates.push(curr.toISOString().split('T')[0]);
+                curr.setDate(curr.getDate() + 1);
+                safety++;
+            }
+        }
+
+        const scheduledItems = [];
+        const meds = fetchedMedications || [];
+        const supps = fetchedSupplements || [];
+        const logs = fetchedAdherenceLogs || [];
+
+        dates.forEach(date => {
+            // Meds
+            meds.forEach(med => {
+                const log = logs.find(l => l.date === date && l.item_id === med.id);
+                scheduledItems.push({
+                    id: log ? log.id : `sched_${med.id}_${date}`, // Unique ID for key
+                    itemId: med.id, // Real ID for DB
+                    type: 'medication',
+                    name: med.name,
+                    dosage: med.dosage,
+                    scheduledTime: med.time_of_day || '08:00', // Time
+                    status: log ? log.status : 'pending',
+                    date: date,
+                    takenAt: log?.taken_at
+                });
+            });
+            // Supps
+            supps.forEach(sup => {
+                const log = logs.find(l => l.date === date && l.item_id === sup.id);
+                scheduledItems.push({
+                    id: log ? log.id : `sched_${sup.id}_${date}`,
+                    itemId: sup.id,
+                    type: 'supplement',
+                    name: sup.name,
+                    dosage: sup.dosage,
+                    scheduledTime: sup.time_of_day || '08:00',
+                    status: log ? log.status : 'pending',
+                    date: date,
+                    takenAt: log?.taken_at
+                });
+            });
+        });
+
+        return scheduledItems.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+    }, [adherenceMode, adherenceDate, adherenceDateRange, fetchedMedications, fetchedSupplements, fetchedAdherenceLogs]);
+
+    // Filter Meals
+    const filteredMeals = useMemo(() => {
+        const meals = patientData.dailyLogs.meals || [];
+        return meals.filter(meal => {
+            if (filterType !== 'all' && meal.type !== filterType) return false;
+
+            const mealDate = meal.date || meal.timestamp?.split('T')[0];
+            if (!mealDate) return false;
+
+            if (nutritionMode === 'day') {
+                return mealDate === selectedDate;
+            } else {
+                return mealDate >= nutritionDateRange.start && mealDate <= nutritionDateRange.end;
+            }
+        });
+    }, [patientData.dailyLogs.meals, filterType, nutritionMode, selectedDate, nutritionDateRange]);
+
+    // Calculate Scaled Nutrition Goals
+    const scaledNutritionGoals = useMemo(() => {
+        if (nutritionMode === 'day') return patientData.nutritionGoals;
+
+        const start = new Date(nutritionDateRange.start);
+        const end = new Date(nutritionDateRange.end);
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) return patientData.nutritionGoals;
+
+        const diffTime = Math.abs(end - start);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+        if (diffDays <= 0) return patientData.nutritionGoals;
+
+        return {
+            calories: patientData.nutritionGoals.calories * diffDays,
+            protein: patientData.nutritionGoals.protein * diffDays,
+            carbs: patientData.nutritionGoals.carbs * diffDays,
+            fat: patientData.nutritionGoals.fat * diffDays
+        };
+    }, [patientData.nutritionGoals, nutritionMode, nutritionDateRange]);
 
     // ========================================
     // EVENT HANDLERS
@@ -212,6 +469,13 @@ const PatientDetails = () => {
             }
             setIsMedModalOpen(false);
             setEditingItem(null);
+
+            // Refresh items
+            const items = await fetchPatientItems(patient.id);
+            setFetchedMedications(items.medications);
+            setFetchedSupplements(items.supplements);
+            setFetchedTasks(items.tasks);
+
         } catch (error) {
             console.error('Error saving medication:', error);
         }
@@ -220,6 +484,11 @@ const PatientDetails = () => {
     const handleDeleteMedication = async (itemId) => {
         try {
             await removePatientItem(patient.id, modalType, itemId);
+            // Refresh items
+            const items = await fetchPatientItems(patient.id);
+            setFetchedMedications(items.medications);
+            setFetchedSupplements(items.supplements);
+            setFetchedTasks(items.tasks);
         } catch (error) {
             console.error('Error deleting medication:', error);
         }
@@ -253,12 +522,16 @@ const PatientDetails = () => {
     };
 
     const handleDeleteMeasurement = async (itemId) => {
+        if (!window.confirm('Tem certeza que deseja excluir este histórico?')) {
+            return;
+        }
         try {
-            await deletePatientMeasurement(patient.id, itemId);
+            await deletePatientMeasurement(itemId);
             const updatedMeasurements = await fetchPatientMeasurements(patient.id);
             setMeasurements(updatedMeasurements || []);
         } catch (error) {
             console.error('Error deleting measurement:', error);
+            alert('Erro ao excluir medição.');
         }
     };
 
@@ -275,19 +548,13 @@ const PatientDetails = () => {
 
     const handleSaveMeal = async (mealData) => {
         try {
-            const updatedLogs = { ...patient.dailyLogs };
-            if (!updatedLogs.meals) updatedLogs.meals = [];
+            await logDailyMeal(patient.id, selectedDate, mealData);
 
-            if (editingMeal) {
-                const index = updatedLogs.meals.findIndex(m => m.id === editingMeal.id);
-                if (index !== -1) {
-                    updatedLogs.meals[index] = { ...mealData, id: editingMeal.id };
-                }
-            } else {
-                updatedLogs.meals.push({ ...mealData, id: Date.now().toString() });
-            }
+            // Refresh logs
+            const nutriStart = nutritionMode === 'range' ? nutritionDateRange.start : selectedDate;
+            const nutriEnd = nutritionMode === 'range' ? nutritionDateRange.end : selectedDate;
+            fetchPatientDailyLogs(patient.id, nutriStart, nutriEnd).then(setFetchedDailyLogs);
 
-            await updatePatient(patient.id, { dailyLogs: updatedLogs });
             setIsMealModalOpen(false);
             setEditingMeal(null);
         } catch (error) {
@@ -306,13 +573,12 @@ const PatientDetails = () => {
     };
 
     // Diet plan handler - updated for day-based structure
+    // Diet plan handler - updated for day-based structure
     const handleUpdateDietPlan = async (day, dayPlan) => {
         try {
-            const updatedDietPlan = {
-                ...patient.dietPlan,
-                [day]: dayPlan
-            };
-            await updatePatient(patient.id, { dietPlan: updatedDietPlan });
+            await updatePatientDietPlan(patient.id, day, dayPlan);
+            const updated = await fetchPatientDietPlan(patient.id);
+            setFetchedDietPlan(updated);
         } catch (error) {
             console.error('Error updating diet plan:', error);
         }
@@ -361,44 +627,51 @@ const PatientDetails = () => {
                             active={activeTab === 'evolution'}
                             onClick={() => setActiveTab('evolution')}
                             icon={Activity}
-                            label="Evolução"
-                        />
+                        >
+                            Evolução
+                        </TabButton>
                         <TabButton
                             active={activeTab === 'medications'}
                             onClick={() => setActiveTab('medications')}
                             icon={Pill}
-                            label="Medicamentos"
-                        />
+                        >
+                            Medicamentos
+                        </TabButton>
                         <TabButton
                             active={activeTab === 'supplements'}
                             onClick={() => setActiveTab('supplements')}
                             icon={Lightbulb}
-                            label="Suplementos"
-                        />
+                        >
+                            Suplementos
+                        </TabButton>
                         <TabButton
                             active={activeTab === 'diet'}
                             onClick={() => setActiveTab('diet')}
                             icon={Utensils}
-                            label="Plano Alimentar"
-                        />
+                        >
+                            Plano Alimentar
+                        </TabButton>
                         <TabButton
                             active={activeTab === 'nutrition'}
                             onClick={() => setActiveTab('nutrition')}
                             icon={ClipboardList}
-                            label="Registro Nutricional"
-                        />
+                        >
+                            Registro Nutricional
+                        </TabButton>
                         <TabButton
                             active={activeTab === 'adherence'}
                             onClick={() => setActiveTab('adherence')}
                             icon={CheckCircle2}
-                            label="Aderência"
-                        />
+                        >
+                            Aderência
+                        </TabButton>
                         <TabButton
                             active={activeTab === 'consultations'}
                             onClick={() => setActiveTab('consultations')}
                             icon={Stethoscope}
-                            label="Consultas"
-                        />
+                        >
+                            Consultas
+                        </TabButton>
                     </div>
 
                     {/* Tab Content */}
@@ -459,7 +732,7 @@ const PatientDetails = () => {
                                     </button>
                                 </div>
                                 <HistoryLogTable
-                                    data={measurements}
+                                    data={historyData}
                                     onEdit={handleEditMeasurement}
                                     onDelete={handleDeleteMeasurement}
                                 />
@@ -468,45 +741,49 @@ const PatientDetails = () => {
                     )}
 
                     {activeTab === 'medications' && (
-                        <div>
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-xl font-semibold">Medicamentos</h3>
-                                <button
-                                    onClick={handleAddMedication}
-                                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-                                >
-                                    <Plus className="w-4 h-4" />
-                                    Adicionar Medicamento
-                                </button>
-                            </div>
-                            <GenericList
-                                items={patientData.medications}
-                                type="medications"
-                                onEdit={handleEditMedication}
-                                onDelete={handleDeleteMedication}
-                            />
-                        </div>
+                        <GenericList
+                            title="Medicamentos"
+                            items={patientData.medications}
+                            onItemAdd={handleAddMedication}
+                            onItemEdit={handleEditMedication}
+                            onItemDelete={handleDeleteMedication}
+                            renderItem={(item) => (
+                                <div>
+                                    <div className="font-semibold text-foreground">{item.name}</div>
+                                    <div className="text-sm text-muted-foreground">
+                                        {item.dosage} - {item.frequency}
+                                    </div>
+                                    {item.notes && (
+                                        <div className="text-xs text-muted-foreground mt-1">{item.notes}</div>
+                                    )}
+                                </div>
+                            )}
+                            emptyMessage="Nenhum medicamento cadastrado"
+                            addItemLabel="Adicionar Medicamento"
+                        />
                     )}
 
                     {activeTab === 'supplements' && (
-                        <div>
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-xl font-semibold">Suplementos</h3>
-                                <button
-                                    onClick={handleAddSupplement}
-                                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-                                >
-                                    <Plus className="w-4 h-4" />
-                                    Adicionar Suplemento
-                                </button>
-                            </div>
-                            <GenericList
-                                items={patientData.supplements}
-                                type="supplements"
-                                onEdit={handleEditSupplement}
-                                onDelete={handleDeleteMedication}
-                            />
-                        </div>
+                        <GenericList
+                            title="Suplementos"
+                            items={patientData.supplements}
+                            onItemAdd={handleAddSupplement}
+                            onItemEdit={handleEditSupplement}
+                            onItemDelete={handleDeleteMedication}
+                            renderItem={(item) => (
+                                <div>
+                                    <div className="font-semibold text-foreground">{item.name}</div>
+                                    <div className="text-sm text-muted-foreground">
+                                        {item.dosage} - {item.frequency}
+                                    </div>
+                                    {item.notes && (
+                                        <div className="text-xs text-muted-foreground mt-1">{item.notes}</div>
+                                    )}
+                                </div>
+                            )}
+                            emptyMessage="Nenhum suplemento cadastrado"
+                            addItemLabel="Adicionar Suplemento"
+                        />
                     )}
 
                     {activeTab === 'diet' && (
@@ -522,14 +799,18 @@ const PatientDetails = () => {
                                 selectedDate={selectedDate}
                                 onDateChange={setSelectedDate}
                                 filterType={filterType}
-                                onFilterChange={setFilterType}
+                                onFilterTypeChange={setFilterType}
                                 showPhotosOnly={showPhotosOnly}
-                                onTogglePhotos={setShowPhotosOnly}
+                                onShowPhotosOnlyChange={setShowPhotosOnly}
+                                mode={nutritionMode}
+                                onModeChange={setNutritionMode}
+                                dateRange={nutritionDateRange}
+                                onDateRangeChange={setNutritionDateRange}
                             />
                             <NutritionSummary
-                                goals={patientData.nutritionGoals}
-                                meals={patientData.dailyLogs.meals || []}
-                                selectedDate={selectedDate}
+                                goals={scaledNutritionGoals}
+                                meals={filteredMeals}
+                                selectedDate={nutritionMode === 'day' ? selectedDate : `Período: ${nutritionDateRange.start} - ${nutritionDateRange.end}`}
                             />
                             <div className="flex justify-between items-center">
                                 <h3 className="text-xl font-semibold">Refeições Registradas</h3>
@@ -542,7 +823,7 @@ const PatientDetails = () => {
                                 </button>
                             </div>
                             <MealTimeline
-                                meals={patientData.dailyLogs.meals || []}
+                                meals={filteredMeals}
                                 selectedDate={selectedDate}
                                 filterType={filterType}
                                 showPhotosOnly={showPhotosOnly}
@@ -559,19 +840,59 @@ const PatientDetails = () => {
                     {activeTab === 'adherence' && (
                         <div className="space-y-6">
                             <AdherenceFilters
+                                selectedDate={adherenceDate}
+                                onDateChange={setAdherenceDate}
                                 filterType={adherenceFilterType}
-                                onFilterChange={setAdherenceFilterType}
+                                onFilterTypeChange={setAdherenceFilterType}
+                                mode={adherenceMode}
+                                onModeChange={setAdherenceMode}
+                                dateRange={adherenceDateRange}
+                                onDateRangeChange={setAdherenceDateRange}
                             />
-                            <AdherenceSummary logs={patientData.adherenceLogs} />
+                            <AdherenceSummary logs={filteredAdherenceLogs} />
                             <AdherenceTimeline
-                                logs={patientData.adherenceLogs}
-                                filterType={adherenceFilterType}
+                                items={filteredAdherenceLogs}
+                                onToggleStatus={async (id) => {
+                                    const item = filteredAdherenceLogs.find(i => i.id === id);
+                                    if (!item) return;
+
+                                    const newStatus = item.status === 'taken' ? 'pending' : 'taken';
+                                    try {
+                                        await logAdherence(patient.id, item.date, item.itemId, item.type, newStatus);
+                                        // Refresh
+                                        const adhStart = adherenceMode === 'range' ? adherenceDateRange.start : adherenceDate;
+                                        const adhEnd = adherenceMode === 'range' ? adherenceDateRange.end : adherenceDate;
+                                        fetchAdherenceLogs(patient.id, adhStart, adhEnd).then(setFetchedAdherenceLogs);
+                                    } catch (err) {
+                                        console.error(err);
+                                    }
+                                }}
                             />
                         </div>
                     )}
 
                     {activeTab === 'consultations' && (
-                        <ConsultationHistory consultations={patientData.consultations} />
+                        <ErrorBoundary>
+                            <ConsultationHistory
+                                consultations={patientData.consultations}
+                                patientId={patient.id}
+                                onAddConsultation={async (consultationData) => {
+                                    await addConsultation(patient.id, consultationData);
+                                    const consults = await fetchPatientConsultations(patient.id);
+                                    setFetchedConsultations(consults);
+                                }}
+                                onUpdateConsultation={async (consultationId, consultationData) => {
+                                    await updateConsultation(consultationId, consultationData);
+                                    const consults = await fetchPatientConsultations(patient.id);
+                                    setFetchedConsultations(consults);
+                                }}
+                                onDeleteConsultation={async (consultationId) => {
+                                    await deleteConsultation(consultationId);
+                                    const consults = await fetchPatientConsultations(patient.id);
+                                    setFetchedConsultations(consults);
+                                }}
+                            />
+                        </ErrorBoundary>
                     )}
                 </div>
             </main>
@@ -583,9 +904,9 @@ const PatientDetails = () => {
                     setIsMedModalOpen(false);
                     setEditingItem(null);
                 }}
-                onSave={handleSaveMedication}
+                onSubmit={handleSaveMedication}
                 type={modalType}
-                editingItem={editingItem}
+                initialData={editingItem}
             />
 
             <HistoryEntryModal
@@ -594,8 +915,8 @@ const PatientDetails = () => {
                     setIsHistoryModalOpen(false);
                     setEditingHistoryItem(null);
                 }}
-                onSave={handleSaveMeasurement}
-                editingItem={editingHistoryItem}
+                onSubmit={handleSaveMeasurement}
+                initialData={editingHistoryItem}
             />
 
             <AddMealModal
@@ -604,8 +925,8 @@ const PatientDetails = () => {
                     setIsMealModalOpen(false);
                     setEditingMeal(null);
                 }}
-                onSave={handleSaveMeal}
-                editingMeal={editingMeal}
+                onSubmit={handleSaveMeal}
+                initialData={editingMeal}
                 selectedDate={selectedDate}
             />
         </div>

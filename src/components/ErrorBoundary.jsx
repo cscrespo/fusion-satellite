@@ -7,28 +7,38 @@ class ErrorBoundary extends React.Component {
     }
 
     static getDerivedStateFromError(error) {
-        return { hasError: true };
+        // Atualiza o state para que a próxima renderização mostre a UI alternativa.
+        return { hasError: true, error };
     }
 
     componentDidCatch(error, errorInfo) {
-        this.setState({ error, errorInfo });
+        // Você também pode registrar o erro em um serviço de relatórios de erro
         console.error("Uncaught error:", error, errorInfo);
+        this.setState({ error, errorInfo });
     }
 
     render() {
         if (this.state.hasError) {
+            // Você pode renderizar qualquer UI alternativa
             return (
-                <div className="p-8 bg-red-50 text-red-900 h-screen overflow-auto">
-                    <h1 className="text-2xl font-bold mb-4">Algo deu errado.</h1>
-                    <details className="whitespace-pre-wrap" open>
-                        <summary className="cursor-pointer mb-2 font-bold">Ver Detalhes do Erro</summary>
-                        <div className="bg-white/50 p-4 rounded text-xs font-mono border border-red-200">
+                <div className="p-6 bg-red-50 border border-red-200 rounded-xl m-4">
+                    <h1 className="text-xl font-bold text-red-700 mb-2">Ops! Algo deu errado.</h1>
+                    <p className="text-red-600 mb-4">Ocorreu um erro ao renderizar este componente.</p>
+                    <details className="bg-white p-4 rounded-lg border border-red-100 text-sm font-mono text-red-800 overflow-auto max-h-96">
+                        <summary className="cursor-pointer font-semibold mb-2">Ver detalhes do erro</summary>
+                        <div className="whitespace-pre-wrap">
                             {this.state.error && this.state.error.toString()}
                             <br />
                             <br />
                             {this.state.errorInfo && this.state.errorInfo.componentStack}
                         </div>
                     </details>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                        Recarregar Página
+                    </button>
                 </div>
             );
         }
