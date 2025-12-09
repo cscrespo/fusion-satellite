@@ -9,7 +9,7 @@ const DoctorCard = ({ doctor }) => {
                 {/* Avatar */}
                 <div className="w-24 h-24 rounded-full p-1 bg-gradient-to-br from-primary/20 to-blue-500/20 mb-4 group-hover:scale-105 transition-transform duration-300">
                     <img
-                        src={doctor.avatar}
+                        src={doctor.avatar_url || 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&q=80'}
                         alt={doctor.name}
                         className="w-full h-full rounded-full object-cover border-2 border-background shadow-sm"
                     />

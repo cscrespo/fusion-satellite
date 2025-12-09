@@ -1,97 +1,91 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Search, Filter, Calendar, FileText, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
-import { mockDoctors } from '../lib/mockData';
+import { supabase } from '../lib/supabase';
 import ConsultationDetailsModal from '../components/medical/ConsultationDetailsModal';
 
 const DoctorHistory = () => {
     const { id } = useParams();
-    const doctor = mockDoctors.find(d => d.id === parseInt(id));
-
-    // Expanded Mock Consultations with full details
-    const [consultations] = useState([
-        {
-            id: 1,
-            date: '2023-11-01',
-            time: '14:00',
-            patient: 'Alice Johnson',
-            type: 'Teleconsulta',
-            status: 'Concluída',
-            amount: 350.00,
-            notes: 'Paciente relatou melhora nos sintomas.',
-            transcription: "Paciente refere sentir-se mais disposta após início da suplementação. Nega efeitos colaterais. Sono melhorou.",
-            objective: { weight: 68.5, bp: '120/80', notes: 'Perda de 1.5kg desde a última consulta.' },
-            assessment: 'Boa resposta ao tratamento inicial.',
-            plan: ['Manter prescrição atual', 'Retorno em 30 dias']
-        },
-        {
-            id: 2,
-            date: '2023-11-03',
-            time: '09:30',
-            patient: 'Bob Smith',
-            type: 'Presencial',
-            status: 'Concluída',
-            amount: 350.00,
-            notes: 'Solicitado exames de sangue.',
-            transcription: "Queixa de fadiga persistente. Exame físico sem alterações significativas.",
-            objective: { weight: 82.0, bp: '130/85', notes: 'Ganho de peso leve.' },
-            assessment: 'Investigar causas metabólicas para fadiga.',
-            plan: ['Solicitar hemograma completo e perfil tireoidiano', 'Ajustar dieta']
-        },
-        {
-            id: 3,
-            date: '2023-11-05',
-            time: '16:00',
-            patient: 'Charlie Brown',
-            type: 'Teleconsulta',
-            status: 'Agendada',
-            amount: 350.00,
-            notes: ''
-        },
-        {
-            id: 4,
-            date: '2023-10-28',
-            time: '11:00',
-            patient: 'Diana Prince',
-            type: 'Presencial',
-            status: 'Concluída',
-            amount: 350.00,
-            notes: 'Retorno de rotina.',
-            transcription: "Paciente assintomática. Traz exames de rotina normais.",
-            objective: { weight: 60.0, bp: '110/70', notes: 'Peso estável.' },
-            assessment: 'Saúde excelente. Manter estilo de vida.',
-            plan: ['Retorno anual']
-        },
-        {
-            id: 5,
-            date: '2023-10-25',
-            time: '15:30',
-            patient: 'Evan Wright',
-            type: 'Teleconsulta',
-            status: 'Cancelada',
-            amount: 0.00,
-            notes: 'Paciente cancelou.'
-        },
-        {
-            id: 6,
-            date: '2023-10-20',
-            time: '10:00',
-            patient: 'Fiona Green',
-            type: 'Presencial',
-            status: 'Concluída',
-            amount: 350.00,
-            notes: 'Primeira consulta.',
-            transcription: "Busca orientação para emagrecimento saudável. Histórico de dietas restritivas sem sucesso.",
-            objective: { weight: 95.0, bp: '135/85', notes: 'IMC 32.5' },
-            assessment: 'Obesidade grau I. Necessidade de reeducação alimentar.',
-            plan: ['Dieta hipocalórica balanceada', 'Iniciar caminhadas 30min/dia', 'Solicitar bioimpedância']
-        },
-    ]);
-
+    const [doctor, setDoctor] = useState(null);
+    const [consultations, setConsultations] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [selectedConsultation, setSelectedConsultation] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+
+    useEffect(() => {
+        fetchData();
+    }, [id]);
+
+    const fetchData = async () => {
+        try {
+            setLoading(true);
+
+            // 1. Fetch Doctor Details
+            const { data: doctorData, error: doctorError } = await supabase
+                .from('doctors')
+                .select('*')
+                .eq('id', id)
+                .single();
+
+            if (doctorError) throw doctorError;
+            setDoctor(doctorData);
+
+            // 2. Fetch Consultations
+            // Note: We match by doctor_name because that's how we seeded the data. 
+            // Ideally we should match by doctor_id if available.
+            if (doctorData) {
+                const { data: consultsData, error: consultsError } = await supabase
+                    .from('patient_consultations')
+                    .select('*, patients(full_name)')
+                    .eq('doctor_name', doctorData.name)
+                    .order('date', { ascending: false });
+
+                if (consultsError) throw consultsError;
+
+                // Map to match the UI structure if needed, or use directly
+                const mappedConsults = consultsData.map(c => ({
+                    ...c,
+                    patient: c.patients?.full_name || 'Paciente Desconhecido',
+                    amount: 350.00, // Hardcoded for now as it's not in the table
+                    status: mapStatus(c)
+                }));
+
+                setConsultations(mappedConsults);
+            }
+
+        } catch (error) {
+            console.error('Error fetching data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const mapStatus = (consultation) => {
+        // Logic to determine status based on date and type if not explicitly set
+        // Or use the seeded logic: 
+        // Paid (>30 days) -> Concluída
+        // Available (>7 days) -> Concluída
+        // Pending (<7 days) -> Agendada (or whatever logic fits)
+
+        // For now, let's infer status if not present, or use a default
+        if (consultation.rating) return 'Concluída';
+
+        const date = new Date(consultation.date);
+        const now = new Date();
+
+        if (date < now) return 'Concluída';
+        return 'Agendada';
+    };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+        );
+    }
 
     if (!doctor) return <div className="p-8">Médico não encontrado</div>;
 
@@ -127,7 +121,7 @@ const DoctorHistory = () => {
     return (
         <div className="max-w-5xl mx-auto pb-20 space-y-6">
             <div className="flex items-center gap-4 mb-6">
-                <Link to={`/doctors/${id}`} className="p-2 rounded-full hover:bg-secondary transition-colors">
+                <Link to={`/doctors`} className="p-2 rounded-full hover:bg-secondary transition-colors">
                     <ArrowLeft className="w-5 h-5 text-muted-foreground" />
                 </Link>
                 <div>
@@ -187,11 +181,11 @@ const DoctorHistory = () => {
                                         <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
                                             <span className="flex items-center gap-1">
                                                 <Calendar className="w-3.5 h-3.5" />
-                                                {consultation.date}
+                                                {new Date(consultation.date).toLocaleDateString()}
                                             </span>
                                             <span className="flex items-center gap-1">
                                                 <Clock className="w-3.5 h-3.5" />
-                                                {consultation.time}
+                                                {new Date(consultation.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                             </span>
                                             <span className="px-2 py-0.5 rounded-md bg-secondary text-xs font-medium">
                                                 {consultation.type}

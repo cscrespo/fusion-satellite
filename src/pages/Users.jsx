@@ -1,55 +1,13 @@
-import React, { useState } from 'react';
-import { Search, Filter, Plus, Users as UsersIcon, Edit, Trash2, Shield, Stethoscope, UserCog, UserCheck } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Filter, Plus, Users as UsersIcon, Edit, Trash2, Shield, Stethoscope, UserCog, UserCheck, Loader2 } from 'lucide-react';
 import UserModal from '../components/users/UserModal';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 
 const Users = () => {
-    const [users, setUsers] = useState([
-        {
-            id: 1,
-            name: 'Dr. Smith',
-            email: 'dr.smith@bloom.com',
-            role: 'admin',
-            specialty: 'Nutricionista',
-            phone: '+55 11 98765-4321',
-            avatar: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=400',
-            status: 'active',
-            createdAt: '2023-01-15'
-        },
-        {
-            id: 2,
-            name: 'Dra. Ana Clara',
-            email: 'ana.clara@bloom.com',
-            role: 'doctor',
-            specialty: 'Nutróloga',
-            phone: '+55 11 91234-5678',
-            avatar: 'https://images.unsplash.com/photo-1559839734-2b71edce6c18?w=400',
-            status: 'active',
-            createdAt: '2023-02-20'
-        },
-        {
-            id: 3,
-            name: 'Carlos Eduardo',
-            email: 'carlos@bloom.com',
-            role: 'assistant',
-            specialty: '',
-            phone: '+55 11 99876-5432',
-            avatar: '',
-            status: 'active',
-            createdAt: '2023-03-10'
-        },
-        {
-            id: 4,
-            name: 'Maria Santos',
-            email: 'maria@bloom.com',
-            role: 'receptionist',
-            specialty: '',
-            phone: '+55 11 97654-3210',
-            avatar: '',
-            status: 'inactive',
-            createdAt: '2023-04-05'
-        }
-    ]);
-
+    const [users, setUsers] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const { profile } = useAuth(); // Access organization_id
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -62,35 +20,123 @@ const Users = () => {
         receptionist: { label: 'Recepcionista', icon: UserCheck, color: 'text-amber-600 bg-amber-50 border-amber-100' }
     };
 
+    const fetchUsers = async () => {
+        if (!profile?.organization_id) return;
+
+        try {
+            setLoading(true);
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('organization_id', profile.organization_id)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            const mappedUsers = data.map(u => ({
+                id: u.id,
+                name: u.full_name,
+                email: u.email,
+                role: u.role,
+                specialty: u.specialty,
+                phone: u.phone,
+                avatar: u.avatar_url,
+                status: u.status || 'active',
+                createdAt: u.created_at
+            }));
+
+            setUsers(mappedUsers);
+        } catch (error) {
+            console.error('Error fetching users:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchUsers();
+    }, [profile?.organization_id]);
+
     const filteredUsers = users.filter(user => {
         const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.email.toLowerCase().includes(searchTerm.toLowerCase());
+            (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase()));
         const matchesRole = roleFilter === 'all' || user.role === roleFilter;
         return matchesSearch && matchesRole;
     });
 
-    const handleAddUser = (userData) => {
-        const newUser = {
-            ...userData,
-            id: users.length + 1,
-            status: 'active',
-            createdAt: new Date().toISOString().split('T')[0]
-        };
-        setUsers([...users, newUser]);
-        setIsModalOpen(false);
+    const handleAddUser = async (userData) => {
+        try {
+            // Validate password for new users
+            if (!userData.password) {
+                alert('Senha é obrigatória para novos usuários');
+                return;
+            }
+
+            const { data, error } = await supabase.rpc('create_user_with_password', {
+                email: userData.email,
+                password: userData.password,
+                full_name: userData.name,
+                role: userData.role,
+                organization_id: profile.organization_id,
+                specialty: userData.specialty || null,
+                phone: userData.phone || null,
+                avatar_url: userData.avatar || null
+            });
+
+            if (error) throw error;
+
+            fetchUsers();
+            setIsModalOpen(false);
+            alert('Usuário criado com sucesso!');
+        } catch (error) {
+            console.error('Error creating user:', error);
+            alert('Erro ao criar usuário: ' + error.message);
+        }
     };
 
-    const handleEditUser = (userData) => {
-        setUsers(users.map(user =>
-            user.id === editingUser.id ? { ...user, ...userData } : user
-        ));
-        setEditingUser(null);
-        setIsModalOpen(false);
+    const handleEditUser = async (userData) => {
+        try {
+            const dbPayload = {
+                full_name: userData.name,
+                email: userData.email,
+                role: userData.role,
+                specialty: userData.specialty,
+                phone: userData.phone,
+                status: userData.status,
+                updated_at: new Date().toISOString()
+            };
+
+            const { error } = await supabase
+                .from('profiles')
+                .update(dbPayload)
+                .eq('id', editingUser.id);
+
+            if (error) throw error;
+
+            fetchUsers();
+            setEditingUser(null);
+            setIsModalOpen(false);
+        } catch (error) {
+            console.error('Error updating user:', error);
+            alert('Erro ao atualizar usuário: ' + error.message);
+        }
     };
 
-    const handleDeleteUser = (userId) => {
+    const handleDeleteUser = async (userId) => {
         if (window.confirm('Tem certeza que deseja excluir este usuário?')) {
-            setUsers(users.filter(user => user.id !== userId));
+            try {
+                const { error } = await supabase
+                    .from('profiles')
+                    .delete()
+                    .eq('id', userId);
+
+                if (error) throw error;
+
+                setUsers(users.filter(user => user.id !== userId));
+            } catch (error) {
+                console.error('Error deleting user:', error);
+                alert('Erro ao excluir usuário: ' + error.message);
+            }
         }
     };
 
@@ -103,6 +149,12 @@ const Users = () => {
         setIsModalOpen(false);
         setEditingUser(null);
     };
+
+    if (loading) return (
+        <div className="flex items-center justify-center p-20">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+    );
 
     return (
         <div className="space-y-8 pb-20">
@@ -238,8 +290,8 @@ const Users = () => {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${user.status === 'active'
-                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                                                    : 'bg-slate-50 text-slate-700 border-slate-100'
+                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                                : 'bg-slate-50 text-slate-700 border-slate-100'
                                                 }`}>
                                                 {user.status === 'active' ? 'Ativo' : 'Inativo'}
                                             </span>

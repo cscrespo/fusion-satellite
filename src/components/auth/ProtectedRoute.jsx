@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
-    const { isAuthenticated, user, loading } = useAuth();
+    const { isAuthenticated, user, loading, isSuperAdmin } = useAuth();
 
     if (loading) {
         return (
@@ -18,6 +18,11 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
 
     if (!isAuthenticated) {
         return <Navigate to="/login" replace />;
+    }
+
+    // Redirect Super Admin to Admin Dashboard if they try to access tenant routes
+    if (isSuperAdmin) {
+        return <Navigate to="/admin" replace />;
     }
 
     if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {

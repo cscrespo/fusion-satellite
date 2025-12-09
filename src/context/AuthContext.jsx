@@ -115,7 +115,7 @@ export const AuthProvider = ({ children }) => {
                 throw new Error('Profile not found');
             }
 
-            return data.user;
+            return { user: data.user, profile: profileData };
         } catch (error) {
             console.error('❌ Login error:', error);
             throw new Error(error.message || 'Email ou senha inválidos');
@@ -211,6 +211,7 @@ export const AuthProvider = ({ children }) => {
             authUser: user,
             profile,
             isAuthenticated,
+            isSuperAdmin: profile?.role === 'super_admin',
             loading,
             login,
             register,

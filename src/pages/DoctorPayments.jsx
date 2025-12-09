@@ -1,101 +1,108 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, DollarSign, Clock, TrendingUp, Download, Search, Filter, Eye, Calendar, Star } from 'lucide-react';
-import { mockDoctors } from '../lib/mockData';
+import { ArrowLeft, DollarSign, Clock, TrendingUp, Download, Search, Filter, Eye, Calendar, Star, Loader2 } from 'lucide-react';
+import { useDoctors } from '../context/DoctorContext';
+import { supabase } from '../lib/supabase';
 import TransactionDetailsModal from '../components/doctors/TransactionDetailsModal';
 
 const DoctorPayments = () => {
     const { id } = useParams();
-    const doctor = mockDoctors.find(d => d.id === parseInt(id));
-
-    // Mock Transactions
-    const [transactions] = useState([
-        {
-            id: 1,
-            consultationId: 42,
-            patientName: "Alice Johnson",
-            protocol: "Protocolo Monjauro",
-            consultationDate: "2023-11-01",
-            consultationTime: "14:00",
-            grossAmount: 350.00,
-            platformFee: 70.00,
-            netAmount: 280.00,
-            status: "Disponível",
-            releaseDate: "2023-11-08",
-            paymentDate: null,
-            patientRating: { score: 5, comment: "Excelente profissional!" },
-            transcription: { duration: "45 min", status: "Aprovado" }
-        },
-        {
-            id: 2,
-            consultationId: 43,
-            patientName: "Bob Smith",
-            protocol: "Protocolo Monjauro",
-            consultationDate: "2023-11-03",
-            consultationTime: "09:30",
-            grossAmount: 350.00,
-            platformFee: 70.00,
-            netAmount: 280.00,
-            status: "Pago",
-            releaseDate: "2023-11-10",
-            paymentDate: "2023-11-15",
-            patientRating: { score: 4, comment: "Muito bom!" },
-            transcription: { duration: "38 min", status: "Aprovado" }
-        },
-        {
-            id: 3,
-            consultationId: 44,
-            patientName: "Charlie Brown",
-            protocol: "Protocolo Monjauro",
-            consultationDate: "2023-11-05",
-            consultationTime: "16:00",
-            grossAmount: 350.00,
-            platformFee: 70.00,
-            netAmount: 280.00,
-            status: "Pendente",
-            releaseDate: "2023-11-12",
-            paymentDate: null,
-            patientRating: null,
-            transcription: { duration: "42 min", status: "Aprovado" }
-        },
-        {
-            id: 4,
-            consultationId: 45,
-            patientName: "Diana Prince",
-            protocol: "Protocolo Monjauro",
-            consultationDate: "2023-10-28",
-            consultationTime: "11:00",
-            grossAmount: 350.00,
-            platformFee: 70.00,
-            netAmount: 280.00,
-            status: "Pago",
-            releaseDate: "2023-11-04",
-            paymentDate: "2023-11-10",
-            patientRating: { score: 5, comment: "Adorei a consulta!" },
-            transcription: { duration: "50 min", status: "Aprovado" }
-        },
-        {
-            id: 5,
-            consultationId: 46,
-            patientName: "Evan Wright",
-            protocol: "Protocolo Monjauro",
-            consultationDate: "2023-11-06",
-            consultationTime: "15:30",
-            grossAmount: 350.00,
-            platformFee: 70.00,
-            netAmount: 280.00,
-            status: "Disponível",
-            releaseDate: "2023-11-13",
-            paymentDate: null,
-            patientRating: { score: 5, comment: "Profissional excelente!" },
-            transcription: { duration: "40 min", status: "Aprovado" }
-        },
-    ]);
+    const { getDoctorById, loading: loadingDoctors } = useDoctors();
+    const [doctor, setDoctor] = useState(null);
+    const [transactions, setTransactions] = useState([]);
+    const [loadingTransactions, setLoadingTransactions] = useState(false);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [selectedTransaction, setSelectedTransaction] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+
+    // Load Doctor
+    useEffect(() => {
+        if (!loadingDoctors) {
+            const foundDoctor = getDoctorById(id);
+            if (foundDoctor) {
+                setDoctor(foundDoctor);
+            }
+        }
+    }, [id, loadingDoctors, getDoctorById]);
+
+    // Fetch Transactions (Simulated from Consultations)
+    useEffect(() => {
+        const fetchTransactions = async () => {
+            if (!doctor?.name) return;
+
+            setLoadingTransactions(true);
+            try {
+                // Fetch consultations to simulate transactions
+                const { data: consultations, error } = await supabase
+                    .from('patient_consultations')
+                    .select('*, patients(full_name)')
+                    .eq('doctor_name', doctor.name)
+                    .order('date', { ascending: false });
+
+                if (error) throw error;
+
+                // Transform consultations into transactions
+                const simulatedTransactions = (consultations || []).map((consultation, index) => {
+                    const price = doctor.price || 0;
+                    const fee = price * 0.20; // 20% platform fee
+
+                    // Simulate status based on mock rules or date
+                    // Older than 30 days = 'Pago', Older than 7 days = 'Disponível', else 'Pendente'
+                    const date = new Date(consultation.date);
+                    const now = new Date();
+                    const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+
+                    let status = 'Pendente';
+                    let paymentDate = null;
+                    let releaseDate = new Date(date);
+                    releaseDate.setDate(releaseDate.getDate() + 7); // Release after 7 days
+
+                    if (diffDays > 30) {
+                        status = 'Pago';
+                        const pDate = new Date(date);
+                        pDate.setDate(pDate.getDate() + 30);
+                        paymentDate = pDate.toISOString().split('T')[0];
+                    } else if (diffDays > 7) {
+                        status = 'Disponível';
+                    }
+
+                    return {
+                        id: consultation.id,
+                        consultationId: consultation.id, // Use UUID
+                        patientName: consultation.patients?.full_name || 'Paciente',
+                        protocol: 'Consulta Padrão', // Placeholder
+                        consultationDate: new Date(consultation.date).toLocaleDateString(),
+                        consultationTime: new Date(consultation.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        grossAmount: price,
+                        platformFee: fee,
+                        netAmount: price - fee,
+                        status: status,
+                        releaseDate: releaseDate.toLocaleDateString(),
+                        paymentDate: paymentDate,
+                        patientRating: consultation.rating ? { score: consultation.rating, comment: consultation.rating_comment } : null,
+                        transcription: { duration: "50 min", status: consultation.transcription ? "Aprovado" : "Pendente" }
+                    };
+                });
+
+                setTransactions(simulatedTransactions);
+
+            } catch (err) {
+                console.error("Error fetching transactions:", err);
+            } finally {
+                setLoadingTransactions(false);
+            }
+        };
+
+        fetchTransactions();
+    }, [doctor]);
+
+    if (loadingDoctors) return (
+        <div className="flex items-center justify-center p-20">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+    );
 
     if (!doctor) return <div className="p-8">Médico não encontrado</div>;
 

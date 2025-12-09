@@ -26,12 +26,16 @@ const Login = () => {
 
         try {
             console.log('🔐 Attempting login...');
-            await login(formData.email, formData.password);
+            const { profile } = await login(formData.email, formData.password);
             console.log('✅ Login successful! Redirecting...');
 
             // Small delay to ensure auth state is updated
             setTimeout(() => {
-                navigate('/');
+                if (profile?.role === 'super_admin') {
+                    navigate('/admin');
+                } else {
+                    navigate('/');
+                }
             }, 100);
         } catch (err) {
             console.error('❌ Login failed:', err);

@@ -8,8 +8,11 @@ const DoctorModal = ({ isOpen, onClose, onSubmit, initialData }) => {
         crm: '',
         rqe: '',
         bio: '',
+        bio: '',
         price: '',
-        avatar: ''
+        avatar_url: '',
+        education: '',
+        languages: ''
     });
 
     useEffect(() => {
@@ -22,8 +25,11 @@ const DoctorModal = ({ isOpen, onClose, onSubmit, initialData }) => {
                 crm: '',
                 rqe: '',
                 bio: '',
+                bio: '',
                 price: '',
-                avatar: ''
+                avatar_url: '',
+                education: '',
+                languages: ''
             });
         }
     }, [initialData, isOpen]);
@@ -34,11 +40,14 @@ const DoctorModal = ({ isOpen, onClose, onSubmit, initialData }) => {
         e.preventDefault();
         onSubmit({
             ...formData,
-            price: parseFloat(formData.price),
+            price: parseFloat(formData.price) || 0,
             rating: initialData ? initialData.rating : 5.0,
             reviews: initialData ? initialData.reviews : 0,
             status: initialData ? initialData.status : 'offline',
-            nextAvailable: initialData ? initialData.nextAvailable : 'A definir'
+            status: initialData ? initialData.status : 'offline',
+            next_available: initialData ? (initialData.next_available || initialData.nextAvailable) : 'A definir',
+            education: formData.education,
+            languages: Array.isArray(formData.languages) ? formData.languages : formData.languages.split(',').map(l => l.trim()).filter(Boolean)
         });
         onClose();
     };
@@ -133,6 +142,29 @@ const DoctorModal = ({ isOpen, onClose, onSubmit, initialData }) => {
                         />
                     </div>
 
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Formação Acadêmica</label>
+                            <input
+                                type="text"
+                                placeholder="Ex: USP, Unifesp"
+                                className="w-full px-3 py-2 rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                                value={formData.education || ''}
+                                onChange={e => setFormData({ ...formData, education: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Idiomas (separados por vírgula)</label>
+                            <input
+                                type="text"
+                                placeholder="Português, Inglês, Espanhol"
+                                className="w-full px-3 py-2 rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                                value={Array.isArray(formData.languages) ? formData.languages.join(', ') : formData.languages || ''}
+                                onChange={e => setFormData({ ...formData, languages: e.target.value })}
+                            />
+                        </div>
+                    </div>
+
                     <div>
                         <label className="block text-sm font-medium mb-1">Foto de Perfil (URL)</label>
                         <div className="flex gap-3">
@@ -140,12 +172,12 @@ const DoctorModal = ({ isOpen, onClose, onSubmit, initialData }) => {
                                 type="url"
                                 placeholder="https://..."
                                 className="flex-1 px-3 py-2 rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                                value={formData.avatar}
-                                onChange={e => setFormData({ ...formData, avatar: e.target.value })}
+                                value={formData.avatar_url}
+                                onChange={e => setFormData({ ...formData, avatar_url: e.target.value })}
                             />
                             <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center overflow-hidden border border-border shrink-0">
-                                {formData.avatar ? (
-                                    <img src={formData.avatar} alt="Preview" className="w-full h-full object-cover" />
+                                {formData.avatar_url ? (
+                                    <img src={formData.avatar_url} alt="Preview" className="w-full h-full object-cover" />
                                 ) : (
                                     <Upload className="w-4 h-4 text-muted-foreground" />
                                 )}

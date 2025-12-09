@@ -119,7 +119,30 @@ async function runMigrations() {
             '03_nutrition_diet.sql',
             '04_consultations_plans_financial.sql',
             '05_crud_schema.sql',
-            '99_fix_measurements_policy.sql'
+            '97_add_doctor_details.sql',
+            '98_create_doctors_table.sql',
+            '99_fix_measurements_policy.sql',
+            '99_seed_financial_data.sql',
+            '100_public_read_policies.sql',
+            '101_seed_plans.sql',
+            '102_users_crud_setup.sql',
+            '103_create_user_rpc.sql',
+            '104_fix_dr_smith_login.sql',
+            '105_seed_financial_test_data.sql',
+            '106_cleanup_dr_smith_auth.sql',
+            '107_proper_auth_fix.sql',
+            '108_seed_more_consultations.sql',
+            '109_seed_full_flow.sql',
+            '110_cleanup_duplicates.sql',
+            '111_setup_super_admin.sql',
+            '112_fix_super_admin_auth.sql',
+            '113_saas_management.sql',
+            '114_link_orgs_to_plans.sql',
+            '115_admin_functions.sql',
+            '116_list_users_rpc.sql',
+            '117_fix_list_users_rpc.sql',
+            '118_fix_org_emails.sql',
+            '119_saas_app_structure.sql'
         ]
 
         let successCount = 0
@@ -127,8 +150,6 @@ async function runMigrations() {
             const success = await executeMigration(client, migration)
             if (success) successCount++
         }
-
-        console.log(`\n\n🎉 ${successCount}/${migrations.length} migrations executadas!`)
 
         await verifyTables(client)
 

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Search, Filter, Plus, Stethoscope } from 'lucide-react';
+import { Search, Filter, Plus, Stethoscope, Loader2 } from 'lucide-react';
 import DoctorCard from '../components/doctors/DoctorCard';
 import DoctorModal from '../components/doctors/DoctorModal';
-import { mockDoctors } from '../lib/mockData';
+import { useDoctors } from '../context/DoctorContext';
 
 const Doctors = () => {
-    const [doctors, setDoctors] = useState(mockDoctors);
+    const { doctors, loading, addDoctor } = useDoctors();
     const [searchTerm, setSearchTerm] = useState('');
     const [specialtyFilter, setSpecialtyFilter] = useState('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -19,13 +19,23 @@ const Doctors = () => {
         return matchesSearch && matchesSpecialty;
     });
 
-    const handleAddDoctor = (newDoctor) => {
-        const doctorWithId = {
-            ...newDoctor,
-            id: doctors.length + 1
-        };
-        setDoctors([...doctors, doctorWithId]);
+    const handleAddDoctor = async (newDoctor) => {
+        try {
+            await addDoctor(newDoctor);
+            setIsModalOpen(false);
+        } catch (error) {
+            console.error(error);
+            alert(`Erro ao cadastrar especialista: ${error.message}`);
+        }
     };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center p-20">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-8 pb-20">

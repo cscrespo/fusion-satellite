@@ -4,21 +4,23 @@ import { LayoutDashboard, Users, ClipboardList, Activity, DollarSign, Stethoscop
 import clsx from 'clsx';
 import { useAuth } from '../context/AuthContext';
 import { useBranding } from '../context/BrandingContext';
+import { useFeatures } from '../context/FeatureContext';
 
 const Layout = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const { user, logout } = useAuth();
     const { branding } = useBranding();
+    const { hasFeature, loading } = useFeatures();
 
     const navItems = [
-        { icon: LayoutDashboard, label: 'Painel', path: '/' },
-        { icon: Users, label: 'Pacientes', path: '/patients' },
-        { icon: Stethoscope, label: 'Especialistas', path: '/doctors' },
-        { icon: Package, label: 'Planos', path: '/plans' },
-        { icon: UserCog, label: 'Usuários', path: '/users' },
-        { icon: DollarSign, label: 'Faturas', path: '/invoices' },
-    ];
+        { icon: LayoutDashboard, label: 'Painel', path: '/', feature: null },
+        { icon: Users, label: 'Pacientes', path: '/patients', feature: null },
+        { icon: Stethoscope, label: 'Especialistas', path: '/doctors', feature: 'multi_user' },
+        { icon: Package, label: 'Planos', path: '/plans', feature: null }, // Tenant viewing their own plan
+        { icon: UserCog, label: 'Usuários', path: '/users', feature: 'multi_user' },
+        { icon: DollarSign, label: 'Faturas', path: '/invoices', feature: 'financial' },
+    ].filter(item => !item.feature || hasFeature(item.feature));
 
     const handleLogout = () => {
         logout();
